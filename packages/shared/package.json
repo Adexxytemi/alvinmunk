@@ -15,7 +15,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
-    "@types/node": "^20.14.12",
+    "@types/node": "^24.19.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.8"
   }
