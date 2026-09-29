@@ -110,13 +110,15 @@ fn unknown_handle_resolves_none() {
 }
 
 #[test]
-#[should_panic]
 fn claim_taken_by_other_reverts() {
     let (env, client, _admin) = setup();
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     client.claim(&alice, &symbol_short!("star"));
-    client.claim(&bob, &symbol_short!("star")); // panics: HandleTaken
+    assert_eq!(
+        client.try_claim(&bob, &symbol_short!("star")),
+        Err(Ok(Error::HandleTaken.into()))
+    );
 }
 
 /// A rename onto someone else's handle is a `claim` like any other, so it reverts with
@@ -255,11 +257,10 @@ fn release_frees_both_directions() {
 }
 
 #[test]
-#[should_panic]
 fn release_without_handle_reverts() {
     let (env, client, _admin) = setup();
     let alice = Address::generate(&env);
-    client.release(&alice); // panics: NoHandle
+    assert_eq!(client.try_release(&alice), Err(Ok(Error::NoHandle.into())));
 }
 
 #[test]
