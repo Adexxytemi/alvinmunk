@@ -133,10 +133,11 @@ pub struct QuestRegistryContract;
 
 #[contractimpl]
 impl QuestRegistryContract {
-    pub fn init(env: Env, admin: Address, reputation: Address) {
-        if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, Error::AlreadyInitialized);
-        }
+    /// Deploy-time setup (#127): `stellar contract deploy … -- --admin <ADDR> --reputation <C…>` runs this inside
+    /// the deploy transaction, so nobody can claim the admin between deploy and setup —
+    /// there is no `init` to front-run. `upgrade` never runs a constructor: a contract
+    /// deployed before this change was set up by its old `init` and keeps that state.
+    pub fn __constructor(env: Env, admin: Address, reputation: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()

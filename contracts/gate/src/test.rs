@@ -24,14 +24,12 @@ fn setup_in(env: Env) -> Fixture<'static> {
     let admin = Address::generate(&env);
     let attester = Address::generate(&env);
 
-    let rep_id = env.register(ReputationContract, ());
+    let rep_id = env.register(ReputationContract, (&admin,));
     let rep = ReputationContractClient::new(&env, &rep_id);
-    rep.init(&admin);
     rep.add_attester(&attester);
 
-    let gate_id = env.register(GateContract, ());
+    let gate_id = env.register(GateContract, (&admin, &rep_id));
     let gate = GateContractClient::new(&env, &gate_id);
-    gate.init(&admin, &rep_id);
 
     Fixture {
         env,
@@ -181,9 +179,8 @@ fn non_admin_upgrade_reverts() {
     let env = Env::default();
     let admin = Address::generate(&env);
     let rep = Address::generate(&env);
-    let id = env.register(GateContract, ());
+    let id = env.register(GateContract, (&admin, &rep));
     let client = GateContractClient::new(&env, &id);
-    client.init(&admin, &rep);
     let hash = soroban_sdk::BytesN::from_array(&env, &[1; 32]);
     client.upgrade(&hash);
 }
@@ -581,8 +578,10 @@ fn check_reads_each_track_once() {
     env.mock_all_auths();
     let rep_id = env.register(counting_rep::CountingRep, ());
     let rep = counting_rep::CountingRepClient::new(&env, &rep_id);
-    let gate = GateContractClient::new(&env, &env.register(GateContract, ()));
-    gate.init(&Address::generate(&env), &rep_id);
+    let gate = GateContractClient::new(
+        &env,
+        &env.register(GateContract, (&Address::generate(&env), &rep_id)),
+    );
     let mut rules = Vec::new(&env);
     for r in [
         rule(TRACK_SOCIAL, 10),
@@ -945,8 +944,10 @@ fn counting_setup(
     env.mock_all_auths();
     let rep_id = env.register(counting_rep::CountingRep, ());
     let rep = counting_rep::CountingRepClient::new(env, &rep_id);
-    let gate = GateContractClient::new(env, &env.register(GateContract, ()));
-    gate.init(&Address::generate(env), &rep_id);
+    let gate = GateContractClient::new(
+        env,
+        &env.register(GateContract, (&Address::generate(env), &rep_id)),
+    );
     (gate, rep)
 }
 
@@ -1155,4 +1156,27 @@ fn upgrading_serves_the_batch_views() {
             .collect::<std::vec::Vec<bool>>(),
         [true]
     );
+}
+
+/// #127: the release build is set up by its constructor, inside the deploy — registering it
+/// takes the constructor's arguments, it has no `init` left for anyone to call afterwards,
+/// and `upgrade` asks the constructor's admin to sign.
+#[test]
+fn the_release_build_is_set_up_by_its_constructor() {
+    use soroban_sdk::IntoVal as _;
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = soroban_sdk::Address::generate(&env);
+    let rep = soroban_sdk::Address::generate(&env);
+    let id = env.register(GATE_WASM, (&admin, &rep));
+    let init = soroban_sdk::Symbol::new(&env, "init");
+    let impostor = soroban_sdk::Address::generate(&env);
+    let call = soroban_sdk::vec![&env, impostor.into_val(&env)];
+    assert!(env
+        .try_invoke_contract::<(), soroban_sdk::Error>(&id, &init, call)
+        .is_err());
+
+    let hash = env.deployer().upload_contract_wasm(GATE_WASM);
+    GateContractClient::new(&env, &id).upgrade(&hash);
+    assert_eq!(env.auths()[0].0, admin);
 }
