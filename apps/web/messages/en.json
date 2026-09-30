@@ -35,7 +35,6 @@
   "landing.hero.seeHowItWorks": "or see how it works",
   "landing.hero.pills": "no_seed_phrase / fees_sponsored / live_on_stellar",
   "landing.ticker.label": "on-chain // facts",
-  "landing.ticker.example": "example",
   "landing.stats.onchain": "Soroban, on-chain",
   "landing.stats.xpTracks": "clout vs cashable",
   "landing.stats.stakeWin": "vouch window",
@@ -342,8 +341,6 @@
   "leaderboard.share": "The most-connected on alvinmunk 🌌 — collect people, not points.",
   "leaderboard.rowLabel": "{name}, rank {rank}, {score} Social XP",
 
-  "howItWorks.meta.title": "How it works",
-  "howItWorks.meta.desc": "The vouch loop, the two-track model, and our honest anti-sybil design.",
   "howItWorks.eyebrow": "// the_machine",
   "howItWorks.title": "How it works",
   "howItWorks.subtitle": "alvinmunk turns trust into something you can see — and other apps can read. Here's the whole machine, including the limits.",
