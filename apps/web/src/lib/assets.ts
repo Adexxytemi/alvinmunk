@@ -68,7 +68,6 @@ export type TapeCorner = keyof typeof TAPE;
 /** Static brand + chrome assets. */
 export const BRAND = {
   'logo-mark': { file: 'brand/logo-mark.png', w: 134, h: 191 },
-  'og-default': { file: 'meta/og-default.png', w: 317, h: 128 },
   favicon: { file: 'meta/favicon-32.png', w: 27, h: 37 },
   cursor: { file: 'cursors/sticker-default.png', w: 28, h: 27 },
 } satisfies Record<string, AssetMeta>;
