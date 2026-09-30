@@ -352,6 +352,8 @@
   "leaderboard.you": "sen",
   "leaderboard.share": "alvinmunk'ta en çok bağlantılı olanlar 🌌 — insanları topla, puan değil.",
   "leaderboard.rowLabel": "{name}, sıra {rank}, {score} Sosyal XP",
+  "leaderboard.entries.one": "1 kayıt",
+  "leaderboard.entries.other": "{count} kayıt",
 
   "howItWorks.eyebrow": "// makine",
   "howItWorks.title": "Nasıl çalışır",
