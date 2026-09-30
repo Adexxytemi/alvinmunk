@@ -186,9 +186,17 @@ own tint. No raw Tailwind palette colours (`amber-400`, `emerald-500`, …): use
 | `body` | 1rem / 1.6, sans | default |
 | `small` | 0.875rem / 1.5 | secondary |
 | `caption` | 0.75rem / 1.4, muted | meta, timestamps |
+| `2xs` | 0.6875rem / 1rem | micro labels, chips, hints — the floor: no text below 11px |
 | `mono` | 0.875rem / 1.5, mono | addresses, hashes |
+| `eyebrow` / `eyebrow-mono` | 0.6875rem / 1, 0.22em, uppercase, muted | uppercase kickers (sans / mono) |
 
-Load with `next/font` (variable, `display: "swap"`, subset latin). Headings get
+`2xs` is the Tailwind `text-2xs`; there are no arbitrary `text-[Npx]` sizes outside the OG
+image renderer (`og-card`). Uppercase kickers use the `eyebrow` / `eyebrow-mono` classes
+(`globals.css`, components layer, so a colour utility such as `text-primary/80` overrides the
+muted default) — never a hand-rolled `tracking-[…em]`.
+
+Load with `next/font` (variable, `display: "swap"`, subsets `latin` + `latin-ext`, so
+Turkish ğ, ş and İ are preloaded and render in the brand fonts on first paint). Headings get
 `font-feature-settings` defaults; mono for any `G…`/hash with middle-truncation.
 
 ## 3. Spacing, radius, layout
