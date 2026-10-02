@@ -20,6 +20,7 @@ import {
   rewardsId,
 } from './contracts';
 import { server, horizon, networkPassphrase, config } from './stellar';
+import { submitSigned } from './submit';
 import type { Wallet } from './wallet';
 
 const usdcSacId = () => config.contracts.usdcSac;
@@ -27,11 +28,46 @@ const usdcSacId = () => config.contracts.usdcSac;
 // USDC, like every Stellar asset, has 7 decimals (1 USDC = 10_000_000 stroops).
 const ONE_USDC = 10_000_000n;
 
-/** Parse a human display amount ("2.5") into i128 stroops. */
+/** Thrown when an amount string is not a valid USDC amount. */
+export class InvalidAmountError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAmountError';
+  }
+}
+
+/** Parse a human display amount ("2.5" or "2,5") into i128 stroops. */
 export function usdcToStroops(display: string): bigint {
-  const [whole, frac = ''] = display.trim().split('.');
+  const trimmed = display.trim();
+
+  // Digits, with an optional single , or . separator followed by digits — rejects
+  // negatives, multiple separators, exponents and any other non-numeric input.
+  if (!/^\d*([.,]\d+)?$/.test(trimmed)) {
+    throw new InvalidAmountError(`Invalid amount: "${display}"`);
+  }
+
+  const normalized = trimmed.replace(',', '.');
+  const [whole, frac = ''] = normalized.split('.');
+  // Truncate (never round up) beyond 7 decimals, so a tip never over-pays.
   const fracPadded = (frac + '0000000').slice(0, 7);
-  return BigInt(whole || '0') * ONE_USDC + BigInt(fracPadded || '0');
+  const result = BigInt(whole || '0') * ONE_USDC + BigInt(fracPadded || '0');
+
+  // Zero, empty and sub-stroop input (truncates to 0) are not valid amounts.
+  if (result <= 0n) {
+    throw new InvalidAmountError(`Amount must be greater than zero: "${display}"`);
+  }
+
+  return result;
+}
+
+/** Check if a string is a valid USDC amount for UI validation (non-throwing). */
+export function isValidAmount(display: string): boolean {
+  try {
+    usdcToStroops(display);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Format i128 stroops back to a trimmed display string. */
@@ -89,12 +125,9 @@ export async function enableUsdc(wallet: Wallet): Promise<string> {
     .setTimeout(60)
     .build();
   const signed = TransactionBuilder.fromXDR(await wallet.sign(tx.toXDR()), networkPassphrase);
-  const sent = await server.sendTransaction(signed);
-  if (sent.status === 'ERROR') {
-    throw new Error(`trustline rejected: ${JSON.stringify(sent.errorResult)}`);
-  }
-  await waitConfirmed(sent.hash);
-  return sent.hash;
+  const hash = await submitSigned(signed, 'trustline');
+  await waitConfirmed(hash);
+  return hash;
 }
 
 /** Request test USDC from the serverless faucet (testnet only; trustline required first). */
@@ -134,16 +167,47 @@ export interface RewardEntry {
   min_streak?: number;
 }
 
-/** The full unlock table (admin-registered on-chain). */
-export async function getRewards(source: string): Promise<RewardEntry[]> {
-  const v = await readContract<RewardEntry[]>(rewardsId(), 'get_rewards', [], source);
-  return (v ?? []).filter((r) => r.active);
+/** One reward row with one wallet's claim status, as `get_rewards_for` returns it. */
+export interface RewardStatus {
+  entry: RewardEntry;
+  claimed: boolean;
+  eligible: boolean;
+  /** The rewards `Error` code `claim_reward` would revert with right now (0 = claimable). */
+  reason: number;
+}
+
+export interface RewardsFor {
+  /** The ACTIVE rows, in table order. */
+  rows: RewardStatus[];
+  /** Treasury budget left today in stroops; `null` = no daily cap. */
+  remainingToday: bigint | null;
+}
+
+/**
+ * The player's reward table in ONE simulation (`get_rewards_for`): every active row with
+ * this wallet's `claimed` / `eligible` / `reason`, plus today's remaining payout budget.
+ * Every field comes from the same ledger, so a claimed reward can't show as claimable.
+ * Throws on RPC failure — the caller decides how to degrade.
+ */
+export async function getRewardsFor(who: string, source: string): Promise<RewardsFor> {
+  const v = await readContract<[RewardStatus[], bigint] | undefined>(
+    rewardsId(),
+    'get_rewards_for',
+    [args.addr(who)],
+    source,
+  );
+  const [rows = [], remaining = -1n] = v ?? [];
+  const left = BigInt(remaining);
+  return {
+    rows: rows.filter((r) => r.entry.active).map((r) => ({ ...r, reason: Number(r.reason) })),
+    remainingToday: left < 0n ? null : left,
+  };
 }
 
 // --- Admin content management. Every write is `admin.require_auth()`-gated on-chain. ---
 
 /** The whole unlock table, INACTIVE rows included — for the admin view. Throws on RPC
- *  failure so an outage isn't shown as an empty table. Players use `getRewards`. */
+ *  failure so an outage isn't shown as an empty table. Players use `getRewardsFor`. */
 export async function getAllRewards(): Promise<RewardEntry[]> {
   return (await readPublic<RewardEntry[]>(rewardsId(), 'get_rewards', [])) ?? [];
 }
@@ -239,11 +303,6 @@ export async function setRewardMinStreak(
   );
 }
 
-/** Has this wallet already claimed `rewardId`? */
-export async function isClaimed(rewardId: number, who: string, source: string): Promise<boolean> {
-  return (await readContract<boolean>(rewardsId(), 'is_claimed', [args.u32(rewardId), args.addr(who)], source)) ?? false;
-}
-
 /**
  * Claim a registered reward from the treasury. The payout amount + threshold are read
  * on-chain from the admin-registered reward — the caller can't dictate them (the
@@ -259,10 +318,11 @@ export async function claimReward(wallet: Wallet, rewardId: number): Promise<voi
 }
 
 async function waitConfirmed(hash: string): Promise<void> {
+  // Poll through transient RPC/decode errors (#193); only an on-chain FAILED rejects.
   for (let i = 0; i < 15; i++) {
-    const res = await server.getTransaction(hash);
-    if (res.status === 'SUCCESS') return;
-    if (res.status === 'FAILED') throw new Error(`tx ${hash} failed on-chain`);
+    const status = await server.getTransaction(hash).then((r) => r.status, () => null);
+    if (status === 'SUCCESS') return;
+    if (status === 'FAILED') throw new Error(`tx ${hash} failed on-chain`);
     await new Promise((r) => setTimeout(r, 1000));
   }
 }
