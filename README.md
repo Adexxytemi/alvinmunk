@@ -37,7 +37,7 @@ Belt-program evidence (White → Blue: screenshots, tx hashes, rubric tables) li
 ## Quick start
 
 ### Prerequisites
-- **Node ≥ 20** + **pnpm 9** (`corepack enable && corepack prepare pnpm@9 --activate`)
+- **Node ≥ 24** + **pnpm 9** (`corepack enable && corepack prepare pnpm@9 --activate`)
 - **Rust stable** + `wasm32-unknown-unknown` target
 - **Stellar CLI**: `cargo install --locked stellar-cli` (or `brew install stellar-cli`)
 
